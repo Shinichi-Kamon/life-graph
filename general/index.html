@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>人生グラフ作成ツール</title>
+<style>
+  :root { --o:#ffa940; --ob:#c77800; --bg:#f6f4ef; --ink:#2b2b2b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Yu Gothic UI","Meiryo","Hiragino Sans",sans-serif; }
+  header { padding:12px 16px 4px; }
+  h1 { margin:0 0 4px; font-size:20px; }
+  .help { font-size:13px; color:#555; margin:0 0 8px; line-height:1.6; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; padding:0 16px 8px; }
+  .bar label { font-size:14px; }
+  input, select, textarea, button { font:inherit; }
+  input[type=text], input[type=number], select, textarea { border:1px solid #bbb; border-radius:6px; padding:5px 8px; background:#fff; }
+  button { border:1px solid var(--ob); background:#fff; color:var(--ob); border-radius:6px; padding:6px 12px; cursor:pointer; }
+  button.main { background:var(--o); color:#3a2000; font-weight:bold; }
+  button.danger { border-color:#b33; color:#b33; }
+  button:disabled { opacity:.4; cursor:default; }
+  .wrap { padding:0 16px 16px; }
+  #svg { width:100%; height:auto; background:#fff; border:1px solid #ccc; border-radius:8px; touch-action:pan-x pan-y pinch-zoom; user-select:none; display:block; }
+  #panel { margin-top:10px; background:#fff; border:1px solid #ccc; border-radius:8px; padding:12px; display:grid; gap:10px; grid-template-columns:auto 1fr; align-items:start; max-width:760px; }
+  #panel .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #panel h2 { grid-column:1/-1; margin:0; font-size:15px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  #txt { width:100%; min-height:70px; resize:vertical; }
+  #rng { width:240px; }
+  .scroll { overflow-x:auto; border-radius:8px; }
+  .modebar { display:flex; gap:10px; margin:0 0 8px; align-items:center; font-size:13px; color:#555; flex-wrap:wrap; }
+  .modebar button { padding:9px 16px; font-size:15px; }
+  #panel.nosel .row, #panel.nosel label { opacity:.5; }
+  @media (max-width:800px) {
+    #svg { width:1000px; max-width:none; }
+    #panel { position:sticky; bottom:6px; z-index:10; box-shadow:0 2px 14px rgba(0,0,0,.3); grid-template-columns:48px 1fr; gap:8px; padding:10px; margin-top:8px; }
+    #panel.nosel { display:none; }
+    #txt { min-height:56px; }
+    #rng { flex:1; width:auto; min-width:100px; }
+  }
+  @page { size: A4 landscape; margin: 8mm; }
+  @media print {
+    #svg { width:100% !important; min-width:0 !important; }
+    .scroll { overflow:visible; } header .help, .bar, .modebar, #panel { display:none; } body { background:#fff; } #svg { border:none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>人生グラフ作成ツール</h1>
+  <p class="help">
+    ① まず下の「スタート」で、グラフの<b>始まりの年月</b>と<b>その時の年齢</b>、<b>期間</b>を設定します。上ほど「いい時期」、下ほど「つらい時期」（ご自身の主観でOK）。<br>
+    ② 「<b>＋ 点を追加</b>」を押すと点が増えます。パソコンならグラフの空いている所のクリックでも追加できます。<br>
+    ③ 点や吹き出しを<b>タップ（クリック）</b>して選ぶと、下の欄で<b>時期・気分・出来事のコメント</b>を設定できます。パソコンでは点・吹き出しのドラッグでも動かせます。<br>
+    ④ できたら「画像で保存」。続きは「データ保存」→次回「読み込み」。入力内容はこのブラウザにも自動保存されます（サーバーには送信されません）。
+  </p>
+</header>
+<div class="bar">
+  <label>お名前 <input type="text" id="name" size="14" placeholder="例：山田太郎"></label>
+  <label>スタート <select id="sy"></select>年 <select id="sm"></select>月</label>
+  <label>その時の年齢 <select id="age"></select></label>
+  <label>期間 <select id="span"></select></label>
+</div>
+<div class="bar">
+  <button class="main" id="btnPng">画像で保存(PNG)</button>
+  <button id="btnPrint">印刷</button>
+  <button id="btnSave">データ保存</button>
+  <button id="btnLoad">読み込み</button>
+  <button class="danger" id="btnClear">最初からやり直す</button>
+  <input type="file" id="file" accept=".json,application/json" hidden>
+</div>
+<div class="wrap">
+  <div class="modebar">
+    <button class="main" id="btnAdd">＋ 点を追加</button>
+    <span>点や吹き出しを選ぶと、下の欄で編集できます</span>
+  </div>
+  <div class="scroll"><svg id="svg" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <div id="panel">
+    <h2><span id="ptitle">点を選ぶとここで編集できます</span><button id="btnClose">閉じる</button></h2>
+    <label>時期</label>
+    <div class="row">
+      <select id="selY"></select>年 <select id="selM"></select>月
+    </div>
+    <label>気分</label>
+    <div class="row">
+      <span style="font-size:12px">最低</span>
+      <input type="range" id="rng" min="-10" max="10" step="0.5">
+      <span style="font-size:12px">最高</span>
+      <b id="vlabel"></b>
+    </div>
+    <label>出来事</label>
+    <textarea id="txt" placeholder="この時期にあったこと（改行できます）"></textarea>
+    <span></span>
+    <div class="row"><button class="danger" id="btnDel">この点を削除 (Delete)</button></div>
+  </div>
+</div>
+
+<script>
+const W = 1280, H = 720, L = 70, R = 1240, ZERO = 350, UNIT = 25, PW = R - L;
+const FONT = '"Yu Gothic UI","Meiryo","Hiragino Sans",sans-serif';
+const KEY = 'lifegraph-general-v1';
+const $ = id => document.getElementById(id);
+const svg = $('svg');
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// m = スタート年月からの経過月数 0..MAXM
+let MAXM = 360;
+const X = m => L + m / MAXM * PW;
+const Y = v => ZERO - v * UNIT;
+const ymOf = m => { const t = S.sm - 1 + m; return { y: S.sy + Math.floor(t / 12), mo: (t % 12) + 1 }; };
+
+function fresh() { return { name: '', sy: 2000, sm: 4, age: 18, span: 30, nid: 2, pts: [{ id: 1, m: 0, v: 0, text: 'スタート', dx: null, dy: null }] }; }
+function norm(d) {
+  const f = fresh();
+  const s = {
+    name: String(d.name || ''),
+    sy: clamp(+d.sy || f.sy, 1900, 2100), sm: clamp(+d.sm || f.sm, 1, 12),
+    age: clamp(d.age == null || isNaN(+d.age) ? f.age : +d.age, 0, 100),
+    span: clamp(+d.span || f.span, 5, 80),
+    pts: (Array.isArray(d.pts) ? d.pts : f.pts).map((p, i) => ({ id: +p.id || i + 1, m: Math.max(0, Math.round(+p.m || 0)), v: clamp(+p.v || 0, -10, 10), text: String(p.text || ''), dx: p.dx ?? null, dy: p.dy ?? null }))
+  };
+  s.nid = Math.max(0, ...s.pts.map(p => p.id)) + 1;
+  s.pts.forEach(p => { p.m = Math.min(p.m, s.span * 12); });
+  return s;
+}
+function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); return s && Array.isArray(s.pts) ? norm(s) : null; } catch (e) { return null; } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+let S = load() || fresh();
+let sel = null, drag = null;
+MAXM = S.span * 12;
+
+const sorted = () => S.pts.slice().sort((a, b) => a.m - b.m || a.id - b.id);
+const byId = id => S.pts.find(p => p.id === id);
+
+function wrap(text, maxEm) {
+  const out = [];
+  for (const raw of String(text).split('\n')) {
+    let line = '', w = 0;
+    for (const ch of raw) {
+      const cw = ch.charCodeAt(0) > 255 ? 1 : 0.55;
+      if (w + cw > maxEm && line) { out.push(line); line = ''; w = 0; }
+      line += ch; w += cw;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function geo(p, i) {
+  const fs = 15, lh = 20, pad = 8;
+  const lines = wrap(p.text, 11);
+  const em = Math.max(...lines.map(l => [...l].reduce((a, c) => a + (c.charCodeAt(0) > 255 ? 1 : 0.55), 0)));
+  const w = Math.max(40, em * fs + pad * 2), h = lines.length * lh + pad * 2;
+  const px = X(p.m), py = Y(p.v);
+  let dx = p.dx, dy = p.dy;
+  if (dx == null) dx = 0;
+  if (dy == null) dy = (p.v >= 0 ? -1 : 1) * (h / 2 + 40 + (i % 2) * 60);
+  const cx = clamp(px + dx, w / 2 + 4, W - w / 2 - 4);
+  const cy = clamp(py + dy, h / 2 + 56, H - h / 2 - 4);
+  return { lines, w, h, cx, cy, px, py, fs, lh, pad };
+}
+
+function build(ui) {
+  const o = [];
+  o.push(`<rect width="${W}" height="${H}" fill="#fff"/>`);
+  const title = (S.name ? S.name + ' の' : '') + '人生グラフ';
+  const e = ymOf(MAXM);
+  o.push(`<rect x="24" y="16" width="14" height="34" fill="#ffee00"/>`);
+  o.push(`<text x="50" y="43" font-size="28" font-family='${FONT}' fill="#222">${esc(title)}</text>`);
+  o.push(`<text x="${R}" y="43" font-size="15" text-anchor="end" font-family='${FONT}' fill="#666">${S.sy}年${S.sm}月 ～ ${e.y}年${e.mo}月</text>`);
+  for (const v of [-10, -5, 5, 10]) o.push(`<line x1="${L}" x2="${R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#eee"/>`);
+  o.push(`<text x="${L - 8}" y="${Y(10) + 5}" font-size="13" text-anchor="end" font-family='${FONT}' fill="#888">最高</text>`);
+  o.push(`<text x="${L - 8}" y="${Y(0) + 5}" font-size="13" text-anchor="end" font-family='${FONT}' fill="#888">ふつう</text>`);
+  o.push(`<text x="${L - 8}" y="${Y(-10) + 5}" font-size="13" text-anchor="end" font-family='${FONT}' fill="#888">最低</text>`);
+  const step = S.span <= 30 ? 1 : S.span <= 60 ? 2 : 5;
+  for (let k = 0; k <= S.span; k++) {
+    const x = X(k * 12);
+    if (k % step === 0) {
+      o.push(`<line x1="${x}" x2="${x}" y1="${Y(10)}" y2="${Y(-10)}" stroke="#f1f1f1"/>`);
+      o.push(`<text x="${x}" y="${Y(-10) + 28}" font-size="14" font-weight="bold" text-anchor="middle" font-family='${FONT}' fill="#8a5200">${S.age + k}歳</text>`);
+      o.push(`<text x="${x}" y="${Y(-10) + 44}" font-size="11" text-anchor="middle" font-family='${FONT}' fill="#888">${S.sy + k}</text>`);
+    }
+  }
+  o.push(`<text x="${L}" y="${Y(-10) + 62}" font-size="11" font-family='${FONT}' fill="#999">※各年${S.sm}月時点の年齢</text>`);
+  o.push(`<line x1="${L - 10}" x2="${R + 10}" y1="${ZERO}" y2="${ZERO}" stroke="#b9c7dd" stroke-width="1.5"/>`);
+
+  const ps = sorted();
+  if (ps.length > 1)
+    o.push(`<polyline points="${ps.map(p => X(p.m) + ',' + Y(p.v)).join(' ')}" fill="none" stroke="#1f5fbf" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>`);
+
+  ps.forEach((p, i) => {
+    if (!p.text.trim()) return;
+    const g = geo(p, i);
+    const x0 = g.cx - g.w / 2, y0 = g.cy - g.h / 2;
+    let tri;
+    if (g.py > y0 + g.h) { const bx = clamp(g.px, x0 + 14, x0 + g.w - 14); tri = `${bx - 9},${y0 + g.h} ${bx + 9},${y0 + g.h} ${g.px},${g.py}`; }
+    else if (g.py < y0) { const bx = clamp(g.px, x0 + 14, x0 + g.w - 14); tri = `${bx - 9},${y0} ${bx + 9},${y0} ${g.px},${g.py}`; }
+    else { const sx = g.px < x0 ? x0 : x0 + g.w, by = clamp(g.py, y0 + 10, y0 + g.h - 10); tri = `${sx},${by - 9} ${sx},${by + 9} ${g.px},${g.py}`; }
+    const hit = ui ? ` data-id="${p.id}" data-kind="co" style="cursor:move"` : '';
+    o.push(`<g${hit}>`);
+    o.push(`<polygon points="${tri}" fill="#ffd9a0" stroke="#c77800" stroke-width="2" stroke-linejoin="round"/>`);
+    o.push(`<rect x="${x0}" y="${y0}" width="${g.w}" height="${g.h}" rx="3" fill="#ffd9a0" stroke="#c77800" stroke-width="2"/>`);
+    g.lines.forEach((l, j) => o.push(`<text x="${g.cx}" y="${y0 + g.pad + j * g.lh + 15}" font-size="15" text-anchor="middle" font-family='${FONT}' fill="#3a2000">${esc(l)}</text>`));
+    o.push('</g>');
+  });
+
+  for (const p of ps) {
+    const x = X(p.m), y = Y(p.v);
+    if (ui && p.id === sel) o.push(`<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="#e0336b" stroke-width="3"/>`);
+    o.push(`<circle cx="${x}" cy="${y}" r="6" fill="#fff" stroke="#1f5fbf" stroke-width="3"/>`);
+    if (ui) o.push(`<circle cx="${x}" cy="${y}" r="20" fill="transparent" data-id="${p.id}" data-kind="pt" style="cursor:grab"/>`);
+  }
+  return o.join('');
+}
+
+function render() { svg.innerHTML = build(true); }
+
+function fillYears() {
+  const ys = $('selY'), end = ymOf(MAXM).y, cur = ys.value;
+  ys.innerHTML = '';
+  for (let y = S.sy; y <= end; y++) ys.add(new Option(y, y));
+  if (cur) ys.value = cur;
+}
+
+function syncPanel() {
+  const p = sel != null ? byId(sel) : null;
+  $('panel').classList.toggle('nosel', !p);
+  for (const id of ['selY', 'selM', 'rng', 'txt', 'btnDel']) $(id).disabled = !p;
+  if (!p) { $('ptitle').textContent = '点を選ぶとここで編集できます'; $('txt').value = ''; $('vlabel').textContent = ''; return; }
+  const { y, mo } = ymOf(p.m);
+  $('ptitle').textContent = `選択中：${y}年${mo}月（${S.age + y - S.sy + (mo < S.sm ? -1 : 0)}歳頃）`;
+  $('selY').value = y; $('selM').value = mo;
+  $('rng').value = p.v;
+  $('vlabel').textContent = (p.v > 0 ? '+' : '') + p.v;
+  if (document.activeElement !== $('txt')) $('txt').value = p.text;
+}
+
+function refresh() { render(); syncPanel(); save(); }
+
+function toSvg(e) {
+  const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+const snapM = x => clamp(Math.round((x - L) / PW * MAXM), 0, MAXM);
+const snapV = y => clamp(Math.round((ZERO - y) / UNIT * 2) / 2, -10, 10);
+
+// タッチ: タップで選択のみ（スクロールは標準動作に任せる）。マウス: クリックで追加・ドラッグで移動
+let tap = null;
+svg.addEventListener('pointerup', e => {
+  if (e.pointerType !== 'touch' || !tap) return;
+  sel = tap.id; tap = null; refresh();
+});
+svg.addEventListener('pointercancel', () => { tap = null; });
+
+function addPoint() {
+  const last = sorted().pop();
+  const p = { id: S.nid++, m: last ? Math.min(MAXM, last.m + 12) : 0, v: 0, text: '', dx: null, dy: null };
+  S.pts.push(p); sel = p.id; refresh();
+  const sc = document.querySelector('.scroll');
+  sc.scrollLeft = X(p.m) * svg.clientWidth / W - sc.clientWidth / 2;
+}
+$('btnAdd').onclick = addPoint;
+$('btnClose').onclick = () => { sel = null; refresh(); };
+
+svg.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch') { const t = e.target.closest('[data-id]'); tap = { id: t ? +t.dataset.id : null }; return; }
+  e.preventDefault();
+  const pos = toSvg(e);
+  const t = e.target.closest('[data-id]');
+  if (t) {
+    const id = +t.dataset.id, p = byId(id), kind = t.dataset.kind;
+    sel = id;
+    if (kind === 'co') {
+      const g = geo(p, sorted().indexOf(p));
+      p.dx = g.cx - X(p.m); p.dy = g.cy - Y(p.v);
+      drag = { id, kind, sx: pos.x, sy: pos.y, dx: p.dx, dy: p.dy };
+    } else drag = { id, kind };
+  } else if (pos.x > L - 15 && pos.x < R + 15 && pos.y > Y(10) - 20 && pos.y < Y(-10) + 20) {
+    const p = { id: S.nid++, m: snapM(pos.x), v: snapV(pos.y), text: '', dx: null, dy: null };
+    S.pts.push(p); sel = p.id; drag = { id: p.id, kind: 'pt' };
+  } else { sel = null; }
+  refresh();
+  if (sel != null && !drag) $('txt').focus();
+});
+window.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const p = byId(drag.id); if (!p) return;
+  const pos = toSvg(e);
+  if (drag.kind === 'pt') { p.m = snapM(pos.x); p.v = snapV(pos.y); }
+  else { p.dx = drag.dx + pos.x - drag.sx; p.dy = drag.dy + pos.y - drag.sy; }
+  render(); syncPanel();
+});
+window.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const wasNew = byId(drag.id) && !byId(drag.id).text;
+  drag = null; save();
+  if (wasNew) $('txt').focus();
+});
+window.addEventListener('keydown', e => {
+  if (e.key === 'Delete' && sel != null && document.activeElement === document.body) delPoint();
+});
+
+function delPoint() {
+  if (sel == null) return;
+  S.pts = S.pts.filter(p => p.id !== sel); sel = null; refresh();
+}
+
+// panel
+for (let m = 1; m <= 12; m++) $('selM').add(new Option(m, m));
+function onDate() {
+  const p = byId(sel); if (!p) return;
+  p.m = clamp((+$('selY').value - S.sy) * 12 + (+$('selM').value - S.sm), 0, MAXM); refresh();
+}
+$('selY').onchange = $('selM').onchange = onDate;
+$('rng').oninput = () => { const p = byId(sel); if (p) { p.v = +$('rng').value; refresh(); } };
+$('txt').oninput = () => { const p = byId(sel); if (p) { p.text = $('txt').value; render(); save(); } };
+$('btnDel').onclick = delPoint;
+
+// スタート設定
+for (let y = 1920; y <= 2060; y++) $('sy').add(new Option(y, y));
+for (let m = 1; m <= 12; m++) $('sm').add(new Option(m, m));
+for (let a = 0; a <= 90; a++) $('age').add(new Option(a + '歳', a));
+for (let n = 5; n <= 80; n += 5) $('span').add(new Option(n + '年間', n));
+function syncMeta() { $('name').value = S.name; $('sy').value = S.sy; $('sm').value = S.sm; $('age').value = S.age; $('span').value = S.span; }
+function onMeta() {
+  S.name = $('name').value; S.sy = +$('sy').value; S.sm = +$('sm').value; S.age = +$('age').value; S.span = +$('span').value;
+  MAXM = S.span * 12;
+  S.pts.forEach(p => { p.m = Math.min(p.m, MAXM); });
+  fillYears(); refresh();
+}
+for (const id of ['name', 'sy', 'sm', 'age', 'span']) $(id).addEventListener(id === 'name' ? 'input' : 'change', onMeta);
+
+function download(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+const fname = () => (S.name || '人生グラフ').replace(/[\\/:*?"<>|]/g, '_');
+
+$('btnPng').onclick = () => {
+  const xml = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${build(false)}</svg>`;
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = 1920; c.height = 1080;
+    c.getContext('2d').drawImage(img, 0, 0, 1920, 1080);
+    c.toBlob(b => download(b, fname() + '_人生グラフ.png'));
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+};
+$('btnPrint').onclick = () => { sel = null; refresh(); window.print(); };
+$('btnSave').onclick = () => download(new Blob([JSON.stringify(S)], { type: 'application/json' }), fname() + '_人生グラフ.json');
+$('btnLoad').onclick = () => $('file').click();
+$('file').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => {
+    try {
+      const d = JSON.parse(t);
+      if (!Array.isArray(d.pts)) throw 0;
+      S = norm(d); MAXM = S.span * 12; sel = null; syncMeta(); fillYears(); refresh();
+    } catch (err) { alert('読み込めないファイルです'); }
+    e.target.value = '';
+  });
+};
+$('btnClear').onclick = () => {
+  if (!confirm('今のグラフを消して最初からやり直しますか？')) return;
+  S = fresh(); MAXM = S.span * 12; sel = null; syncMeta(); fillYears(); refresh();
+};
+
+syncMeta(); fillYears(); refresh();
+</script>
+</body>
+</html>
