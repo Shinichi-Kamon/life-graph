@@ -20,33 +20,35 @@
   button.danger { border-color:#b33; color:#b33; }
   button:disabled { opacity:.4; cursor:default; }
   .wrap { padding:0 16px 16px; }
-  #svg { width:100%; height:auto; background:#fff; border:1px solid #ccc; border-radius:8px; touch-action:none; user-select:none; display:block; }
+  #svg { width:100%; height:auto; background:#fff; border:1px solid #ccc; border-radius:8px; touch-action:pan-x pan-y pinch-zoom; user-select:none; display:block; }
   #panel { margin-top:10px; background:#fff; border:1px solid #ccc; border-radius:8px; padding:12px; display:grid; gap:10px; grid-template-columns:auto 1fr; align-items:start; max-width:760px; }
   #panel .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  #panel h2 { grid-column:1/-1; margin:0; font-size:15px; }
+  #panel h2 { grid-column:1/-1; margin:0; font-size:15px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
   #txt { width:100%; min-height:70px; resize:vertical; }
   #rng { width:240px; }
   .scroll { overflow-x:auto; border-radius:8px; }
-  .modebar { display:none; gap:8px; margin:0 0 8px; align-items:center; font-size:13px; }
-  .modebar button.on { background:var(--o); color:#3a2000; font-weight:bold; }
+  .modebar { display:flex; gap:10px; margin:0 0 8px; align-items:center; font-size:13px; color:#555; flex-wrap:wrap; }
+  .modebar button { padding:9px 16px; font-size:15px; }
+  #panel.nosel .row, #panel.nosel label { opacity:.5; }
   @media (max-width:800px) {
     #svg { width:1000px; max-width:none; }
-    .modebar { display:flex; }
-    #panel { grid-template-columns:1fr; }
-    #rng { width:100%; }
+    #panel { position:sticky; bottom:6px; z-index:10; box-shadow:0 2px 14px rgba(0,0,0,.3); grid-template-columns:48px 1fr; gap:8px; padding:10px; margin-top:8px; }
+    #panel.nosel { display:none; }
+    #txt { min-height:56px; }
+    #rng { flex:1; width:auto; min-width:100px; }
   }
   @page { size: A4 landscape; margin: 8mm; }
   @media print {
     #svg { width:100% !important; min-width:0 !important; }
-    .scroll { overflow:visible; } header .help, .bar, #panel { display:none; } body { background:#fff; } #svg { border:none; } }
+    .scroll { overflow:visible; } header .help, .bar, .modebar, #panel { display:none; } body { background:#fff; } #svg { border:none; } }
 </style>
 </head>
 <body>
 <header>
   <h1>高専後の人生グラフ作成ツール</h1>
   <p class="help">
-    ① グラフの空いている所を<b>クリック</b>すると点が増えます（左端が1997年3月末、右端が2027年3月末）。上ほど「いい時期」、下ほど「つらい時期」。<br>
-    ② 点を<b>ドラッグ</b>で動かし、点を選ぶと下の欄で<b>出来事のコメント</b>を入力できます。吹き出しもドラッグで動かせます。<br>
+    ① 「<b>＋ 点を追加</b>」を押すと点が増えます（左端が1997年3月末、右端が2027年3月末）。上ほど「いい時期」、下ほど「つらい時期」。パソコンならグラフの空いている所のクリックでも追加できます。<br>
+    ② 点や吹き出しを<b>タップ（クリック）</b>して選ぶと、下の欄で<b>時期・気分・出来事のコメント</b>を設定できます。パソコンでは点・吹き出しのドラッグでも動かせます。<br>
     ③ できたら「画像で保存」。続きは「データ保存」→次回「読み込み」。入力内容はこのブラウザにも自動保存されます。
   </p>
 </header>
@@ -62,12 +64,12 @@
 </div>
 <div class="wrap">
   <div class="modebar">
-    <button id="mEdit" class="on">✏️ 編集（タップで点を追加・ドラッグ）</button>
-    <button id="mScroll">✋ 画面を動かす</button>
+    <button class="main" id="btnAdd">＋ 点を追加</button>
+    <span>点や吹き出しを選ぶと、下の欄で編集できます</span>
   </div>
   <div class="scroll"><svg id="svg" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg"></svg></div>
   <div id="panel">
-    <h2 id="ptitle">点を選ぶとここで編集できます</h2>
+    <h2><span id="ptitle">点を選ぶとここで編集できます</span><button id="btnClose">閉じる</button></h2>
     <label>時期</label>
     <div class="row">
       <select id="selY"></select>年 <select id="selM"></select>月
@@ -185,7 +187,7 @@ function build(ui) {
     const x = X(p.m), y = Y(p.v);
     if (ui && p.id === sel) o.push(`<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="#e0336b" stroke-width="3"/>`);
     o.push(`<circle cx="${x}" cy="${y}" r="6" fill="#fff" stroke="#1f5fbf" stroke-width="3"/>`);
-    if (ui) o.push(`<circle cx="${x}" cy="${y}" r="14" fill="transparent" data-id="${p.id}" data-kind="pt" style="cursor:grab"/>`);
+    if (ui) o.push(`<circle cx="${x}" cy="${y}" r="20" fill="transparent" data-id="${p.id}" data-kind="pt" style="cursor:grab"/>`);
   }
   return o.join('');
 }
@@ -194,6 +196,7 @@ function render() { svg.innerHTML = build(true); }
 
 function syncPanel() {
   const p = sel != null ? byId(sel) : null;
+  $('panel').classList.toggle('nosel', !p);
   for (const id of ['selY', 'selM', 'rng', 'txt', 'btnDel']) $(id).disabled = !p;
   if (!p) { $('ptitle').textContent = '点を選ぶとここで編集できます'; $('txt').value = ''; $('vlabel').textContent = ''; return; }
   const { y, mo } = ymOf(p.m);
@@ -213,17 +216,26 @@ function toSvg(e) {
 const snapM = x => clamp(Math.round((x - L) / PW * MAXM), 0, MAXM);
 const snapV = y => clamp(Math.round((ZERO - y) / UNIT * 2) / 2, -10, 10);
 
-let editMode = true;
-function setMode(on) {
-  editMode = on;
-  svg.style.touchAction = on ? 'none' : 'pan-x pan-y';
-  $('mEdit').classList.toggle('on', on); $('mScroll').classList.toggle('on', !on);
+// タッチ: タップで選択のみ（スクロールは標準動作に任せる）。マウス: クリックで追加・ドラッグで移動
+let tap = null;
+svg.addEventListener('pointerup', e => {
+  if (e.pointerType !== 'touch' || !tap) return;
+  sel = tap.id; tap = null; refresh();
+});
+svg.addEventListener('pointercancel', () => { tap = null; });
+
+function addPoint() {
+  const last = sorted().pop();
+  const p = { id: S.nid++, m: last ? Math.min(MAXM, last.m + 12) : 0, v: 0, text: '', dx: null, dy: null };
+  S.pts.push(p); sel = p.id; refresh();
+  const sc = document.querySelector('.scroll');
+  sc.scrollLeft = X(p.m) * svg.clientWidth / W - sc.clientWidth / 2;
 }
-$('mEdit').onclick = () => setMode(true);
-$('mScroll').onclick = () => setMode(false);
+$('btnAdd').onclick = addPoint;
+$('btnClose').onclick = () => { sel = null; refresh(); };
 
 svg.addEventListener('pointerdown', e => {
-  if (!editMode) return;
+  if (e.pointerType === 'touch') { const t = e.target.closest('[data-id]'); tap = { id: t ? +t.dataset.id : null }; return; }
   e.preventDefault();
   const pos = toSvg(e);
   const t = e.target.closest('[data-id]');
