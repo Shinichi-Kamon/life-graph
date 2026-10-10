@@ -48,7 +48,7 @@
   <p class="help">
     ① まず下の「スタート」で、グラフの<b>始まりの年月</b>と<b>その時の年齢</b>、<b>期間</b>を設定します。上ほど「いい時期」、下ほど「つらい時期」（ご自身の主観でOK）。<br>
     ② 「<b>＋ 点を追加</b>」を押すと点が増えます。パソコンならグラフの空いている所のクリックでも追加できます。<br>
-    ③ 点を<b>タップ（クリック）</b>して選ぶと、下の欄で<b>時期・気分</b>と<b>ハイライト（出来事の一言）</b>を設定できます。「<b>人生の5大ハイライト</b>」として<b>最大5つ</b>まで、番号付きでグラフの下にまとめて表示されます。ハイライトを付けない点は、ただの点としてグラフに残ります。パソコンでは点のドラッグでも動かせます。<br>
+    ③ 点を<b>タップ（クリック）</b>して選ぶと、下の欄で<b>時期・気分</b>と<b>出来事のコメント</b>を設定できます（コメントはいくつでも入力OK）。その中から「<b>人生の5大ハイライトに使う</b>」にチェックした点（<b>最大5つ</b>）だけが、番号付きでグラフの下にまとめて表示されます。チェックしなかったコメントは、メモとして保存されるだけで画像には出ません。パソコンでは点のドラッグでも動かせます。<br>
     ④ できたら「画像で保存」。続きは「データ保存」→次回「読み込み」。入力内容はこのブラウザにも自動保存されます（サーバーには送信されません）。
   </p>
 </header>
@@ -85,8 +85,8 @@
       <span style="font-size:12px">最高</span>
       <b id="vlabel"></b>
     </div>
-    <label>ハイライト</label>
-    <div><input type="text" id="txt" maxlength="50" placeholder="この時期の出来事を一言で（空欄なら点だけ）"><div id="hlnote" style="font-size:12px;color:#666;margin-top:4px"></div></div>
+    <label>出来事</label>
+    <div><input type="text" id="txt" maxlength="100" placeholder="この時期の出来事（空欄なら点だけ）"><label style="display:block;margin-top:6px;font-size:14px"><input type="checkbox" id="hlChk"> 人生の5大ハイライトに使う <span id="hlnote" style="color:#666;font-size:12px"></span></label></div>
     <span></span>
     <div class="row"><button class="danger" id="btnDel">この点を削除 (Delete)</button></div>
   </div>
@@ -108,7 +108,7 @@ const X = m => L + m / MAXM * PW;
 const Y = v => ZERO - v * UNIT;
 const ymOf = m => { const t = S.sm - 1 + m; return { y: S.sy + Math.floor(t / 12), mo: (t % 12) + 1 }; };
 
-function fresh() { return { name: '', sy: 2000, sm: 4, age: 18, span: 30, nid: 2, pts: [{ id: 1, m: 0, v: 0, text: '', dx: null, dy: null }] }; }
+function fresh() { return { name: '', sy: 2000, sm: 4, age: 18, span: 30, nid: 2, pts: [{ id: 1, m: 0, v: 0, text: '', hl: false, dx: null, dy: null }] }; }
 function norm(d) {
   const f = fresh();
   const s = {
@@ -116,10 +116,11 @@ function norm(d) {
     sy: clamp(+d.sy || f.sy, 1900, 2100), sm: clamp(+d.sm || f.sm, 1, 12),
     age: clamp(d.age == null || isNaN(+d.age) ? f.age : +d.age, 0, 100),
     span: clamp(+d.span || f.span, 5, 80),
-    pts: (Array.isArray(d.pts) ? d.pts : f.pts).map((p, i) => ({ id: +p.id || i + 1, m: Math.max(0, Math.round(+p.m || 0)), v: clamp(+p.v || 0, -10, 10), text: String(p.text || ''), dx: p.dx ?? null, dy: p.dy ?? null }))
+    pts: (Array.isArray(d.pts) ? d.pts : f.pts).map((p, i) => ({ id: +p.id || i + 1, m: Math.max(0, Math.round(+p.m || 0)), v: clamp(+p.v || 0, -10, 10), text: String(p.text || ''), hl: p.hl, dx: p.dx ?? null, dy: p.dy ?? null }))
   };
   s.nid = Math.max(0, ...s.pts.map(p => p.id)) + 1;
   s.pts.forEach(p => { p.m = Math.min(p.m, s.span * 12); });
+  mig(s);
   return s;
 }
 function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); return s && Array.isArray(s.pts) ? norm(s) : null; } catch (e) { return null; } }
@@ -131,7 +132,12 @@ MAXM = S.span * 12;
 
 const sorted = () => S.pts.slice().sort((a, b) => a.m - b.m || a.id - b.id);
 const byId = id => S.pts.find(p => p.id === id);
-const hlList = () => sorted().filter(p => p.text.trim());
+function mig(s) {
+  if (!s.pts.some(p => p.hl !== undefined))
+    s.pts.slice().sort((a, b) => a.m - b.m || a.id - b.id).filter(p => String(p.text || '').trim()).slice(0, MAX_HL).forEach(p => { p.hl = true; });
+  s.pts.forEach(p => { p.hl = !!p.hl; });
+  return s;
+}
 const clip = (s, maxEm) => { let w = 0, out = ''; for (const ch of s) { w += ch.charCodeAt(0) > 255 ? 1 : 0.55; if (w > maxEm) return out + '…'; out += ch; } return out; };
 
 function build(ui) {
@@ -162,7 +168,7 @@ function build(ui) {
   if (ps.length > 1)
     o.push(`<polyline points="${ps.map(p => X(p.m) + ',' + Y(p.v)).join(' ')}" fill="none" stroke="#1f5fbf" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>`);
 
-  const hl = ps.filter(p => p.text.trim()).slice(0, MAX_HL);
+  const hl = ps.filter(p => p.hl && p.text.trim()).slice(0, MAX_HL);
   for (const p of ps) {
     const x = X(p.m), y = Y(p.v), n = hl.indexOf(p) + 1;
     if (ui && p.id === sel) o.push(`<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="#e0336b" stroke-width="3"/>`);
@@ -200,20 +206,19 @@ function fillYears() {
 function syncPanel() {
   const p = sel != null ? byId(sel) : null;
   $('panel').classList.toggle('nosel', !p);
-  for (const id of ['selY', 'selM', 'rng', 'txt', 'btnDel']) $(id).disabled = !p;
-  if (!p) { $('ptitle').textContent = '点を選ぶとここで編集できます'; $('txt').value = ''; $('vlabel').textContent = ''; $('hlnote').textContent = ''; return; }
+  for (const id of ['selY', 'selM', 'rng', 'txt', 'btnDel', 'hlChk']) $(id).disabled = !p;
+  if (!p) { $('ptitle').textContent = '点を選ぶとここで編集できます'; $('txt').value = ''; $('vlabel').textContent = ''; $('hlnote').textContent = ''; $('hlChk').checked = false; return; }
   const { y, mo } = ymOf(p.m);
   $('ptitle').textContent = `選択中：${y}年${mo}月（${S.age + y - S.sy + (mo < S.sm ? -1 : 0)}歳頃）`;
   $('selY').value = y; $('selM').value = mo;
   $('rng').value = p.v;
   $('vlabel').textContent = (p.v > 0 ? '+' : '') + p.v;
   if (document.activeElement !== $('txt')) $('txt').value = p.text;
-  const used = S.pts.filter(q => q.id !== p.id && q.text.trim()).length, has = !!p.text.trim();
-  const full = !has && used >= MAX_HL;
-  $('txt').disabled = full;
-  $('hlnote').textContent = full ? `ハイライトは最大${MAX_HL}つまでです（他の点のハイライトを消すと追加できます）`
-    : has && hlList().indexOf(p) >= MAX_HL ? `枠（${MAX_HL}つ）を超えているため、この点のハイライトは表示されません`
-    : `ハイライト ${Math.min(MAX_HL, used + (has ? 1 : 0))}/${MAX_HL}`;
+  const used = S.pts.filter(q => q.hl && q.text.trim()).length, has = !!p.text.trim();
+  const left = MAX_HL - used;
+  $('hlChk').checked = !!p.hl && has;
+  $('hlChk').disabled = !has || (!p.hl && left <= 0);
+  $('hlnote').textContent = `（残り${left}個）` + (!has ? '　コメントを入力すると選べます' : (!p.hl && left <= 0) ? '　他の点のチェックを外すと選べます' : '');
 }
 
 function refresh() { render(); syncPanel(); save(); }
@@ -235,7 +240,7 @@ svg.addEventListener('pointercancel', () => { tap = null; });
 
 function addPoint() {
   const last = sorted().pop();
-  const p = { id: S.nid++, m: last ? Math.min(MAXM, last.m + 12) : 0, v: 0, text: '', dx: null, dy: null };
+  const p = { id: S.nid++, m: last ? Math.min(MAXM, last.m + 12) : 0, v: 0, text: '', hl: false, dx: null, dy: null };
   S.pts.push(p); sel = p.id; refresh();
   const sc = document.querySelector('.scroll');
   sc.scrollLeft = X(p.m) * svg.clientWidth / W - sc.clientWidth / 2;
@@ -251,7 +256,7 @@ svg.addEventListener('pointerdown', e => {
   if (t) {
     sel = +t.dataset.id; drag = { id: sel, kind: 'pt' };
   } else if (pos.x > L - 15 && pos.x < R + 15 && pos.y > Y(10) - 20 && pos.y < Y(-10) + 20) {
-    const p = { id: S.nid++, m: snapM(pos.x), v: snapV(pos.y), text: '', dx: null, dy: null };
+    const p = { id: S.nid++, m: snapM(pos.x), v: snapV(pos.y), text: '', hl: false, dx: null, dy: null };
     S.pts.push(p); sel = p.id; drag = { id: p.id, kind: 'pt' };
   } else { sel = null; }
   refresh();
@@ -287,7 +292,8 @@ function onDate() {
 }
 $('selY').onchange = $('selM').onchange = onDate;
 $('rng').oninput = () => { const p = byId(sel); if (p) { p.v = +$('rng').value; refresh(); } };
-$('txt').oninput = () => { const p = byId(sel); if (p) { p.text = $('txt').value; render(); syncPanel(); save(); } };
+$('txt').oninput = () => { const p = byId(sel); if (p) { p.text = $('txt').value; if (!p.text.trim()) p.hl = false; render(); syncPanel(); save(); } };
+$('hlChk').onchange = () => { const p = byId(sel); if (p) { p.hl = $('hlChk').checked; refresh(); } };
 $('btnDel').onclick = delPoint;
 
 // スタート設定
