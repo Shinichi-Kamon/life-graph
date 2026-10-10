@@ -24,7 +24,7 @@
   #panel { margin-top:10px; background:#fff; border:1px solid #ccc; border-radius:8px; padding:12px; display:grid; gap:10px; grid-template-columns:auto 1fr; align-items:start; max-width:760px; }
   #panel .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   #panel h2 { grid-column:1/-1; margin:0; font-size:15px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  #txt { width:100%; min-height:70px; resize:vertical; }
+  #txt { width:100%; }
   #rng { width:240px; }
   .scroll { overflow-x:auto; border-radius:8px; }
   .modebar { display:flex; gap:10px; margin:0 0 8px; align-items:center; font-size:13px; color:#555; flex-wrap:wrap; }
@@ -34,7 +34,6 @@
     #svg { width:1000px; max-width:none; }
     #panel { position:sticky; bottom:6px; z-index:10; box-shadow:0 2px 14px rgba(0,0,0,.3); grid-template-columns:48px 1fr; gap:8px; padding:10px; margin-top:8px; }
     #panel.nosel { display:none; }
-    #txt { min-height:56px; }
     #rng { flex:1; width:auto; min-width:100px; }
   }
   @page { size: A4 landscape; margin: 8mm; }
@@ -49,7 +48,7 @@
   <p class="help">
     ① まず下の「スタート」で、グラフの<b>始まりの年月</b>と<b>その時の年齢</b>、<b>期間</b>を設定します。上ほど「いい時期」、下ほど「つらい時期」（ご自身の主観でOK）。<br>
     ② 「<b>＋ 点を追加</b>」を押すと点が増えます。パソコンならグラフの空いている所のクリックでも追加できます。<br>
-    ③ 点や吹き出しを<b>タップ（クリック）</b>して選ぶと、下の欄で<b>時期・気分・出来事のコメント</b>を設定できます。パソコンでは点・吹き出しのドラッグでも動かせます。<br>
+    ③ 点を<b>タップ（クリック）</b>して選ぶと、下の欄で<b>時期・気分</b>と<b>ハイライト（出来事の一言）</b>を設定できます。「<b>人生の5大ハイライト</b>」として<b>最大5つ</b>まで、番号付きでグラフの下にまとめて表示されます。ハイライトを付けない点は、ただの点としてグラフに残ります。パソコンでは点のドラッグでも動かせます。<br>
     ④ できたら「画像で保存」。続きは「データ保存」→次回「読み込み」。入力内容はこのブラウザにも自動保存されます（サーバーには送信されません）。
   </p>
 </header>
@@ -70,7 +69,7 @@
 <div class="wrap">
   <div class="modebar">
     <button class="main" id="btnAdd">＋ 点を追加</button>
-    <span>点や吹き出しを選ぶと、下の欄で編集できます</span>
+    <span>点を選ぶと、下の欄で編集できます</span>
   </div>
   <div class="scroll"><svg id="svg" viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg"></svg></div>
   <div id="panel">
@@ -86,16 +85,17 @@
       <span style="font-size:12px">最高</span>
       <b id="vlabel"></b>
     </div>
-    <label>出来事</label>
-    <textarea id="txt" placeholder="この時期にあったこと（改行できます）"></textarea>
+    <label>ハイライト</label>
+    <div><input type="text" id="txt" maxlength="50" placeholder="この時期の出来事を一言で（空欄なら点だけ）"><div id="hlnote" style="font-size:12px;color:#666;margin-top:4px"></div></div>
     <span></span>
     <div class="row"><button class="danger" id="btnDel">この点を削除 (Delete)</button></div>
   </div>
 </div>
 
 <script>
-const W = 1280, H = 720, L = 70, R = 1240, ZERO = 350, UNIT = 25, PW = R - L;
+const W = 1280, H = 720, L = 70, R = 1240, ZERO = 245, UNIT = 15, PW = R - L;
 const FONT = '"Yu Gothic UI","Meiryo","Hiragino Sans",sans-serif';
+const MAX_HL = 5, LIST_Y = 495;
 const KEY = 'lifegraph-general-v1';
 const $ = id => document.getElementById(id);
 const svg = $('svg');
@@ -108,7 +108,7 @@ const X = m => L + m / MAXM * PW;
 const Y = v => ZERO - v * UNIT;
 const ymOf = m => { const t = S.sm - 1 + m; return { y: S.sy + Math.floor(t / 12), mo: (t % 12) + 1 }; };
 
-function fresh() { return { name: '', sy: 2000, sm: 4, age: 18, span: 30, nid: 2, pts: [{ id: 1, m: 0, v: 0, text: 'スタート', dx: null, dy: null }] }; }
+function fresh() { return { name: '', sy: 2000, sm: 4, age: 18, span: 30, nid: 2, pts: [{ id: 1, m: 0, v: 0, text: '', dx: null, dy: null }] }; }
 function norm(d) {
   const f = fresh();
   const s = {
@@ -131,34 +131,8 @@ MAXM = S.span * 12;
 
 const sorted = () => S.pts.slice().sort((a, b) => a.m - b.m || a.id - b.id);
 const byId = id => S.pts.find(p => p.id === id);
-
-function wrap(text, maxEm) {
-  const out = [];
-  for (const raw of String(text).split('\n')) {
-    let line = '', w = 0;
-    for (const ch of raw) {
-      const cw = ch.charCodeAt(0) > 255 ? 1 : 0.55;
-      if (w + cw > maxEm && line) { out.push(line); line = ''; w = 0; }
-      line += ch; w += cw;
-    }
-    out.push(line);
-  }
-  return out;
-}
-
-function geo(p, i) {
-  const fs = 15, lh = 20, pad = 8;
-  const lines = wrap(p.text, 11);
-  const em = Math.max(...lines.map(l => [...l].reduce((a, c) => a + (c.charCodeAt(0) > 255 ? 1 : 0.55), 0)));
-  const w = Math.max(40, em * fs + pad * 2), h = lines.length * lh + pad * 2;
-  const px = X(p.m), py = Y(p.v);
-  let dx = p.dx, dy = p.dy;
-  if (dx == null) dx = 0;
-  if (dy == null) dy = (p.v >= 0 ? -1 : 1) * (h / 2 + 40 + (i % 2) * 60);
-  const cx = clamp(px + dx, w / 2 + 4, W - w / 2 - 4);
-  const cy = clamp(py + dy, h / 2 + 56, H - h / 2 - 4);
-  return { lines, w, h, cx, cy, px, py, fs, lh, pad };
-}
+const hlList = () => sorted().filter(p => p.text.trim());
+const clip = (s, maxEm) => { let w = 0, out = ''; for (const ch of s) { w += ch.charCodeAt(0) > 255 ? 1 : 0.55; if (w > maxEm) return out + '…'; out += ch; } return out; };
 
 function build(ui) {
   const o = [];
@@ -188,27 +162,28 @@ function build(ui) {
   if (ps.length > 1)
     o.push(`<polyline points="${ps.map(p => X(p.m) + ',' + Y(p.v)).join(' ')}" fill="none" stroke="#1f5fbf" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>`);
 
-  ps.forEach((p, i) => {
-    if (!p.text.trim()) return;
-    const g = geo(p, i);
-    const x0 = g.cx - g.w / 2, y0 = g.cy - g.h / 2;
-    let tri;
-    if (g.py > y0 + g.h) { const bx = clamp(g.px, x0 + 14, x0 + g.w - 14); tri = `${bx - 9},${y0 + g.h} ${bx + 9},${y0 + g.h} ${g.px},${g.py}`; }
-    else if (g.py < y0) { const bx = clamp(g.px, x0 + 14, x0 + g.w - 14); tri = `${bx - 9},${y0} ${bx + 9},${y0} ${g.px},${g.py}`; }
-    else { const sx = g.px < x0 ? x0 : x0 + g.w, by = clamp(g.py, y0 + 10, y0 + g.h - 10); tri = `${sx},${by - 9} ${sx},${by + 9} ${g.px},${g.py}`; }
-    const hit = ui ? ` data-id="${p.id}" data-kind="co" style="cursor:move"` : '';
-    o.push(`<g${hit}>`);
-    o.push(`<polygon points="${tri}" fill="#ffd9a0" stroke="#c77800" stroke-width="2" stroke-linejoin="round"/>`);
-    o.push(`<rect x="${x0}" y="${y0}" width="${g.w}" height="${g.h}" rx="3" fill="#ffd9a0" stroke="#c77800" stroke-width="2"/>`);
-    g.lines.forEach((l, j) => o.push(`<text x="${g.cx}" y="${y0 + g.pad + j * g.lh + 15}" font-size="15" text-anchor="middle" font-family='${FONT}' fill="#3a2000">${esc(l)}</text>`));
-    o.push('</g>');
-  });
-
+  const hl = ps.filter(p => p.text.trim()).slice(0, MAX_HL);
   for (const p of ps) {
-    const x = X(p.m), y = Y(p.v);
+    const x = X(p.m), y = Y(p.v), n = hl.indexOf(p) + 1;
     if (ui && p.id === sel) o.push(`<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="#e0336b" stroke-width="3"/>`);
     o.push(`<circle cx="${x}" cy="${y}" r="6" fill="#fff" stroke="#1f5fbf" stroke-width="3"/>`);
+    if (n) {
+      const by = p.v >= 0 ? y - 22 : y + 22;
+      o.push(`<circle cx="${x}" cy="${by}" r="12" fill="#ffa940" stroke="#c77800" stroke-width="2"/>`);
+      o.push(`<text x="${x}" y="${by + 5}" font-size="14" font-weight="bold" text-anchor="middle" font-family='${FONT}' fill="#3a2000">${n}</text>`);
+    }
     if (ui) o.push(`<circle cx="${x}" cy="${y}" r="20" fill="transparent" data-id="${p.id}" data-kind="pt" style="cursor:grab"/>`);
+  }
+  if (hl.length) {
+    o.push(`<text x="${L}" y="${LIST_Y}" font-size="17" font-weight="bold" font-family='${FONT}' fill="#8a5200">人生の5大ハイライト</text>`);
+    o.push(`<line x1="${L}" x2="${R}" y1="${LIST_Y + 8}" y2="${LIST_Y + 8}" stroke="#ffc880"/>`);
+    hl.forEach((p, i) => {
+      const cy = LIST_Y + 34 + i * 34, d = ymOf(p.m);
+      const line = `${d.y}年${d.mo}月（${Number(S.age) + Math.floor(p.m / 12)}歳頃）　` + p.text.replace(/\s*\n\s*/g, ' ').trim();
+      o.push(`<circle cx="${L + 12}" cy="${cy - 5}" r="12" fill="#ffa940" stroke="#c77800" stroke-width="2"/>`);
+      o.push(`<text x="${L + 12}" y="${cy}" font-size="14" font-weight="bold" text-anchor="middle" font-family='${FONT}' fill="#3a2000">${i + 1}</text>`);
+      o.push(`<text x="${L + 34}" y="${cy}" font-size="17" font-family='${FONT}' fill="#222">${esc(clip(line, 66))}</text>`);
+    });
   }
   return o.join('');
 }
@@ -226,13 +201,19 @@ function syncPanel() {
   const p = sel != null ? byId(sel) : null;
   $('panel').classList.toggle('nosel', !p);
   for (const id of ['selY', 'selM', 'rng', 'txt', 'btnDel']) $(id).disabled = !p;
-  if (!p) { $('ptitle').textContent = '点を選ぶとここで編集できます'; $('txt').value = ''; $('vlabel').textContent = ''; return; }
+  if (!p) { $('ptitle').textContent = '点を選ぶとここで編集できます'; $('txt').value = ''; $('vlabel').textContent = ''; $('hlnote').textContent = ''; return; }
   const { y, mo } = ymOf(p.m);
   $('ptitle').textContent = `選択中：${y}年${mo}月（${S.age + y - S.sy + (mo < S.sm ? -1 : 0)}歳頃）`;
   $('selY').value = y; $('selM').value = mo;
   $('rng').value = p.v;
   $('vlabel').textContent = (p.v > 0 ? '+' : '') + p.v;
   if (document.activeElement !== $('txt')) $('txt').value = p.text;
+  const used = S.pts.filter(q => q.id !== p.id && q.text.trim()).length, has = !!p.text.trim();
+  const full = !has && used >= MAX_HL;
+  $('txt').disabled = full;
+  $('hlnote').textContent = full ? `ハイライトは最大${MAX_HL}つまでです（他の点のハイライトを消すと追加できます）`
+    : has && hlList().indexOf(p) >= MAX_HL ? `枠（${MAX_HL}つ）を超えているため、この点のハイライトは表示されません`
+    : `ハイライト ${Math.min(MAX_HL, used + (has ? 1 : 0))}/${MAX_HL}`;
 }
 
 function refresh() { render(); syncPanel(); save(); }
@@ -268,13 +249,7 @@ svg.addEventListener('pointerdown', e => {
   const pos = toSvg(e);
   const t = e.target.closest('[data-id]');
   if (t) {
-    const id = +t.dataset.id, p = byId(id), kind = t.dataset.kind;
-    sel = id;
-    if (kind === 'co') {
-      const g = geo(p, sorted().indexOf(p));
-      p.dx = g.cx - X(p.m); p.dy = g.cy - Y(p.v);
-      drag = { id, kind, sx: pos.x, sy: pos.y, dx: p.dx, dy: p.dy };
-    } else drag = { id, kind };
+    sel = +t.dataset.id; drag = { id: sel, kind: 'pt' };
   } else if (pos.x > L - 15 && pos.x < R + 15 && pos.y > Y(10) - 20 && pos.y < Y(-10) + 20) {
     const p = { id: S.nid++, m: snapM(pos.x), v: snapV(pos.y), text: '', dx: null, dy: null };
     S.pts.push(p); sel = p.id; drag = { id: p.id, kind: 'pt' };
@@ -287,7 +262,6 @@ window.addEventListener('pointermove', e => {
   const p = byId(drag.id); if (!p) return;
   const pos = toSvg(e);
   if (drag.kind === 'pt') { p.m = snapM(pos.x); p.v = snapV(pos.y); }
-  else { p.dx = drag.dx + pos.x - drag.sx; p.dy = drag.dy + pos.y - drag.sy; }
   render(); syncPanel();
 });
 window.addEventListener('pointerup', () => {
@@ -313,7 +287,7 @@ function onDate() {
 }
 $('selY').onchange = $('selM').onchange = onDate;
 $('rng').oninput = () => { const p = byId(sel); if (p) { p.v = +$('rng').value; refresh(); } };
-$('txt').oninput = () => { const p = byId(sel); if (p) { p.text = $('txt').value; render(); save(); } };
+$('txt').oninput = () => { const p = byId(sel); if (p) { p.text = $('txt').value; render(); syncPanel(); save(); } };
 $('btnDel').onclick = delPoint;
 
 // スタート設定
